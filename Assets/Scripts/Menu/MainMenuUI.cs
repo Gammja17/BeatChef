@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using BeatSlash.Rhythm;
+using BeatSlash.UI;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
@@ -67,6 +68,8 @@ namespace BeatSlash.Menu
         Text _recordText;
 
         WebSongUploader _uploader;
+        string[] _savedSongs = Array.Empty<string>();
+        UIManager _ui;
 
         /// <summary>WebGL엔 파일시스템이 없다 — 내장 곡(Resources/Songs)만 사용.</summary>
         static bool IsWeb => Application.platform == RuntimePlatform.WebGLPlayer;
@@ -115,9 +118,15 @@ namespace BeatSlash.Menu
                 SelectSource(2, clip.name, "upload:" + clip.name);
                 _status.text = $"업로드됨: {clip.name}";
             };
+            _uploader.OnSavedList = names =>
+            {
+                _savedSongs = names;
+                if (_listTab == 1) RefreshList();
+            };
 
             BuildUi();
             RefreshList();
+            if (IsWeb) _uploader.RequestSavedList();
         }
 
         void OnDestroy()
@@ -169,6 +178,9 @@ namespace BeatSlash.Menu
 
         void Update()
         {
+            // 튜토리얼이 떠 있으면 키 입력은 튜토리얼 몫
+            if (_ui != null && _ui.IsOpen(TutorialPanel.PrefabName)) return;
+
             // ESC: 곡 선택 페이지에선 뒤로, 타이틀에선 설정 토글
             if (Input.GetKeyDown(KeyCode.Escape) && _canvasRoot != null)
             {
@@ -210,6 +222,8 @@ namespace BeatSlash.Menu
             canvasGo.AddComponent<GraphicRaycaster>();
             var root = canvasGo.transform;
             _canvasRoot = root;
+            _ui = gameObject.AddComponent<UIManager>();
+            _ui.root = root;
 
             // 우상단 설정 버튼 — 우상단 코너 앵커라 어떤 화면에서도 안 잘림
             if (UISprites.Gear != null)
@@ -268,10 +282,11 @@ namespace BeatSlash.Menu
                     MakeText(tp, "Subtitle", "SLICE TO THE BEAT!", 38, new Vector2(-540f, 300f), new Color(1f, 0.45f, 0.75f));
                 }
 
-                MenuButton(tp, "게임 시작", new Vector2(-620f, -170f), ShowSelect);
-                MenuButton(tp, "설정", new Vector2(-620f, -285f), () => SettingsPanel.Toggle(root));
+                MenuButton(tp, "게임 시작", new Vector2(-620f, -110f), ShowSelect);
+                MenuButton(tp, "튜토리얼", new Vector2(-620f, -225f), () => _ui.Show(TutorialPanel.PrefabName));
+                MenuButton(tp, "설정", new Vector2(-620f, -340f), () => SettingsPanel.Toggle(root));
                 if (!IsWeb)
-                    MenuButton(tp, "게임 종료", new Vector2(-620f, -400f), Application.Quit);
+                    MenuButton(tp, "게임 종료", new Vector2(-620f, -455f), Application.Quit);
 
                 // 키아트의 그 HI-SCORE — 우하단, 전 곡 통합 최고 기록
                 int hi = Gameplay.HighScores.GetGlobal();
@@ -597,6 +612,8 @@ namespace BeatSlash.Menu
         {
             _titlePage.SetActive(false);
             _selectPage.SetActive(true);
+            // 첫 플레이면 노트 가이드를 한 번 띄운다 (닫으면 본 것으로 기록)
+            if (!TutorialPanel.Seen) _ui.Show(TutorialPanel.PrefabName);
         }
 
         void ShowTitle()
@@ -699,12 +716,27 @@ namespace BeatSlash.Menu
             else
             {
                 // ── 탭: 내 곡 (업로드 / 로컬 파일) ──
-                if (_upClip != null)
+                // 저장에 실패한 업로드(시크릿 모드 등)는 이번 세션 동안만 표시
+                if (_upClip != null && Array.IndexOf(_savedSongs, _upClip.name) < 0)
                 {
                     var c = _upClip;
                     string key = "upload:" + c.name;
                     var btn = MakeListButton($"{c.name}  (업로드)", key);
                     btn.onClick.AddListener(() => SelectSource(2, c.name, key));
+                    count++;
+                }
+                // 브라우저에 저장된 곡 — 누르면 그때 디코딩 (이미 불러온 곡이면 바로 선택)
+                foreach (var saved in _savedSongs)
+                {
+                    var n = saved;
+                    string key = "upload:" + n;
+                    var btn = MakeListButton(n, key);
+                    btn.onClick.AddListener(() =>
+                    {
+                        if (_upClip != null && _upClip.name == n) SelectSource(2, n, key);
+                        else _uploader.LoadSaved(n);
+                    });
+                    AddDeleteButton(btn.transform, n);
                     count++;
                 }
                 if (!IsWeb)
@@ -738,6 +770,31 @@ namespace BeatSlash.Menu
                     : "내장 곡이 없어요";
             }
             UpdateSelectionVisuals();
+        }
+
+        /// <summary>저장된 곡 행 오른쪽 삭제 버튼 — 브라우저 저장소에서 지운다.</summary>
+        void AddDeleteButton(Transform row, string songName)
+        {
+            var del = MakeButton(row, "삭제", Vector2.zero, () =>
+            {
+                _uploader.DeleteSaved(songName);
+                _savedSongs = _savedSongs.Where(s => s != songName).ToArray();
+                if (_sourceType == 2 && _selectedName == songName)
+                {
+                    StopPreview();
+                    _sourceType = -1;
+                    _selectedName = _selectedKey = null;
+                }
+                if (_upClip != null && _upClip.name == songName)
+                {
+                    _upClip = null;
+                    _upSamples = null;
+                }
+                RefreshList();
+            });
+            var rt = del.GetComponent<RectTransform>();
+            rt.sizeDelta = new Vector2(110f, 50f);
+            AnchorTo(rt, new Vector2(1f, 0.5f), new Vector2(-70f, 0f));
         }
 
         void SelectTab(int tab)
