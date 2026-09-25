@@ -47,6 +47,7 @@ namespace BeatSlash.Gameplay
             public RectTransform root;   // 이동/스케일 컨테이너
             public Graphic arrow;        // Image(스프라이트) 또는 Text(글리프 폴백)
             public RawImage ring;
+            public RawImage target;      // 고정 판정 원 — 어프로치 링이 여기에 닿는 순간이 정타
             public Vector2 anchor;
             public Color typeColor;      // 노트 종류 색 — 링/플레이트/뱃지가 공유
             public RawImage plate;       // 배경 원판 — "지금!" 플래시용
@@ -206,7 +207,8 @@ namespace BeatSlash.Gameplay
                 float frac = Mathf.Clamp01(remain / leadTime); // 1=멀다, 0=도착
                 float near = 1f - frac;
                 bool ready = remain <= 0.3f;                 // 곧이다 — 종류색으로 점화
-                bool hot = Mathf.Abs(remain) <= 0.14f;       // 지금! — 초록 플래시
+                // 지금! — Perfect 판정 창 안에서만 번쩍 (0.14초였을 땐 정타보다 먼저 번쩍여 이르게 치게 만들었음)
+                bool hot = Mathf.Abs(remain) <= BeatJudge.Instance.perfectWindow;
 
                 // 순번별 강조: 1순위 뚜렷+살짝 크게, 뒤로 갈수록 투명+작게 — 시선 우선순위
                 float orderFade = i switch { 0 => 1f, 1 => 0.6f, 2 => 0.38f, _ => 0.22f };
@@ -240,8 +242,13 @@ namespace BeatSlash.Gameplay
                     // 3단 신호: 멀다=흐린 종류색 → 곧(0.3s)=진한 종류색 → 지금(±0.14s)=초록 풀점화
                     // 링은 1·2순위만 — 셋 이상 겹치면 링 소음이 가독성을 죽인다
                     p.ring.enabled = i < 2;
+                    p.target.enabled = i < 2;
                     var tc = p.typeColor;
-                    p.ring.transform.localScale = Vector3.one * Mathf.Lerp(2.4f, 1f, near) * bigScale * focus;
+                    // 링은 판정 원에 정확히 닿고(remain=0), 늦으면 안쪽으로 계속 파고든다 — 늦었다는 게 보인다
+                    float approach = 1f + 1.4f * Mathf.Max(remain / leadTime, -0.2f);
+                    p.ring.transform.localScale = Vector3.one * approach * bigScale * focus;
+                    p.target.transform.localScale = Vector3.one * bigScale * focus;
+                    p.target.color = hot ? NowColor : new Color(1f, 1f, 1f, 0.55f * appear * orderFade);
                     p.ring.color = hot
                         ? NowColor
                         : ready
@@ -392,19 +399,6 @@ namespace BeatSlash.Gameplay
             var typeColor = e.type switch { 1 => bigColor, 2 => SlowColor, 3 => HoldColor, _ => hitColor };
             var p = new Prompt { anchor = anchor, typeColor = typeColor };
 
-            if (!_classic)
-            {
-                var ringGo = new GameObject("PromptRing");
-                ringGo.transform.SetParent(_canvas, false);
-                p.ring = ringGo.AddComponent<RawImage>();
-                p.ring.texture = _ringTex;
-                p.ring.raycastTarget = false;
-                var rrt = p.ring.rectTransform;
-                rrt.anchorMin = rrt.anchorMax = new Vector2(0.5f, 0.5f);
-                rrt.anchoredPosition = anchor;
-                rrt.sizeDelta = new Vector2(170f, 170f);
-            }
-
             // 컨테이너(root) — 이동/스케일은 여기, 화살표는 자식
             var rootGo = new GameObject("PromptNote");
             rootGo.transform.SetParent(_canvas, false);
@@ -459,6 +453,16 @@ namespace BeatSlash.Gameplay
                 t.text = _arrows[lane];
                 p.arrow = t;
             }
+
+            if (!_classic)
+            {
+                // 고정 판정 원(흰색) + 어프로치 링 — 화살표 뒤에 만들어 원판 위에 그린다.
+                // 원판(정타 때 최대 ~260px)보다 큰 230px 기준이라 겹치는 순간이 안 가려진다
+                p.target = MakeRing(_canvas, "PromptTarget", 230f, _ringTex);
+                p.target.rectTransform.anchoredPosition = anchor;
+                p.ring = MakeRing(_canvas, "PromptRing", 230f, _ringTex);
+                p.ring.rectTransform.anchoredPosition = anchor;
+            }
             return p;
         }
 
@@ -503,6 +507,7 @@ namespace BeatSlash.Gameplay
             {
                 _prompts.Remove(e);
                 if (p.ring != null) Destroy(p.ring.gameObject);
+                if (p.target != null) Destroy(p.target.gameObject);
                 if (p.arrow != null)
                 {
                     // 스프라이트 화살표는 자체 색 유지 (틴트하면 노랗게 물듦) — 글리프 폴백만 판정색

@@ -12,6 +12,8 @@ namespace BeatSlash.Menu
         public static int PromptMode;
         /// <summary>선택한 난이도 인덱스 — 하이스코어 키에 사용.</summary>
         public static int Difficulty;
+        /// <summary>인게임 튜토리얼로 진입했는지 — GameFlow가 TutorialDirector를 붙인다.</summary>
+        public static bool Tutorial;
 
         /// <summary>요리 메뉴: 재료 풀 필터. ingredients가 null이면 전 재료 등장.
         /// 이름은 KenneyIngredientBuilder가 만드는 프리팹 이름과 일치해야 한다.</summary>

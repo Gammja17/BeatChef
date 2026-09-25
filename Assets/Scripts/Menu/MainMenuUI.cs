@@ -179,7 +179,7 @@ namespace BeatSlash.Menu
         void Update()
         {
             // 튜토리얼이 떠 있으면 키 입력은 튜토리얼 몫
-            if (_ui != null && _ui.IsOpen(TutorialPanel.PrefabName)) return;
+            if (_ui != null && _ui.IsOpen(TutorialCard.PrefabName)) return;
 
             // ESC: 곡 선택 페이지에선 뒤로, 타이틀에선 설정 토글
             if (Input.GetKeyDown(KeyCode.Escape) && _canvasRoot != null)
@@ -283,7 +283,7 @@ namespace BeatSlash.Menu
                 }
 
                 MenuButton(tp, "게임 시작", new Vector2(-620f, -110f), ShowSelect);
-                MenuButton(tp, "튜토리얼", new Vector2(-620f, -225f), () => _ui.Show(TutorialPanel.PrefabName));
+                MenuButton(tp, "튜토리얼", new Vector2(-620f, -225f), StartTutorial);
                 MenuButton(tp, "설정", new Vector2(-620f, -340f), () => SettingsPanel.Toggle(root));
                 if (!IsWeb)
                     MenuButton(tp, "게임 종료", new Vector2(-620f, -455f), Application.Quit);
@@ -612,8 +612,27 @@ namespace BeatSlash.Menu
         {
             _titlePage.SetActive(false);
             _selectPage.SetActive(true);
-            // 첫 플레이면 노트 가이드를 한 번 띄운다 (닫으면 본 것으로 기록)
-            if (!TutorialPanel.Seen) _ui.Show(TutorialPanel.PrefabName);
+            // 처음이면 튜토리얼을 한 번 권유 (하든 건너뛰든 다시 묻지 않음)
+            if (!Gameplay.TutorialScript.Seen)
+            {
+                Gameplay.TutorialScript.Seen = true;
+                _ui.Show(TutorialCard.PrefabName).GetComponent<TutorialCard>().Show("", "처음이신가요?",
+                    "튜토리얼에서 노트를 직접 썰어보며 배워요.\n1~2분이면 끝나요!",
+                    "튜토리얼 하기", StartTutorial, "건너뛰기", () => _ui.Hide(TutorialCard.PrefabName));
+            }
+        }
+
+        /// <summary>인게임 튜토리얼: 대본 비트맵 + 클릭 트랙으로 게임 씬 진입.</summary>
+        void StartTutorial()
+        {
+            StopPreview();
+            var (map, clip) = Gameplay.TutorialScript.Build();
+            SongSelection.Tutorial = true;
+            SongSelection.Map = map;
+            SongSelection.Clip = clip;
+            SongSelection.PromptMode = 0; // 클래식(링 조여드는 기본 문법)
+            SongSelection.Dish = 0;
+            SceneManager.LoadScene(gameplayScene);
         }
 
         void ShowTitle()
@@ -915,6 +934,7 @@ namespace BeatSlash.Menu
             _loading = true;
             StopPreview();
             var d = Difficulties[_difficulty];
+            SongSelection.Tutorial = false;
             SongSelection.PromptMode = _mode;
             SongSelection.Dish = _dish;
             SongSelection.Difficulty = _difficulty;

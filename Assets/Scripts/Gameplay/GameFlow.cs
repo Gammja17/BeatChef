@@ -30,6 +30,7 @@ namespace BeatSlash.Gameplay
 
             gameObject.AddComponent<PauseMenu>(); // ESC 일시정지 — 씬 수정 없이 런타임 부착
             gameObject.AddComponent<Juice.FeverBackdrop>(); // 피버 병맛 배경
+            if (SongSelection.Tutorial) gameObject.AddComponent<TutorialDirector>(); // 단계별 안내 카드
 
             // 도마가 비트마다 쿵쿵 — 무대 자체가 박자를 탄다
             var board = GameObject.Find("CuttingBoard");

@@ -29,6 +29,8 @@ namespace BeatSlash.EditorTools
             // GitHub Pages는 Content-Encoding 헤더를 못 만지므로 압축 해제 폴백 필수
             PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Gzip;
             PlayerSettings.WebGL.decompressionFallback = true;
+            // 파일명에 내용 해시 — 재배포 시 브라우저가 옛 framework.js와 새 wasm을 섞어 LinkError 나는 것 방지
+            PlayerSettings.WebGL.nameFilesAsHashes = true;
             // 기본 WASM 스택(64KB)은 에셋 초기화 호출 깊이에서 터진다("RangeError: call stack exceeded")
             // → 2MB로 증량. 8MB는 초기 힙 레이아웃을 침범해 "memory access out of bounds" 유발했음
             PlayerSettings.WebGL.emscriptenArgs = "-sSTACK_SIZE=2097152";
